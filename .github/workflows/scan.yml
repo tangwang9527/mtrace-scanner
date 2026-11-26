@@ -1,0 +1,77 @@
+name: MTrace Security Scanner
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: 'GitHub repository (owner/repo)'
+        required: true
+        default: 'projectcapsule/capsule'
+        type: string
+
+      ref:
+        description: 'Branch, Tag or Commit SHA'
+        required: true
+        default: 'v0.7.0'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+
+      # 1. 下载检测器
+      - name: Checkout MTrace
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # 2. 安装 Go 环境
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache: false
+
+      # 3. 下载目标项目
+      - name: Checkout Target Repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.ref }}
+          path: target
+          persist-credentials: false
+
+      # 4. 编译检测器
+      - name: Build MTrace
+        run: go build -o mtrace mtrace.go
+
+      # 5. 执行静态扫描
+      - name: Run MTrace
+        run: |
+          mkdir -p results
+          ./mtrace ./target > results/candidates.json
+
+      # 6. 统计检测结果
+      - name: Generate Summary
+        run: |
+          echo "## MTrace Scan Results" >> "$GITHUB_STEP_SUMMARY"
+
+          jq -r '
+            (. // [])
+            | group_by(.m_type)[]
+            | "\(.[0].m_type): \(length)"
+          ' results/candidates.json >> "$GITHUB_STEP_SUMMARY"
+
+      # 7. 上传 JSON 报告
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: mtrace-results
+          path: results/
+          retention-days: 30
