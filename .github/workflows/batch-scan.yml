@@ -1,0 +1,122 @@
+name: MTrace Batch Scanner
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+
+  # ====================================
+  # Job 1: 读取项目列表并自动分组
+  # ====================================
+
+  prepare:
+    runs-on: ubuntu-latest
+
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+
+    steps:
+
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - id: plan
+        run: python3 scripts/batch.py prepare
+
+
+  # ====================================
+  # Job 2: 最多10个并行扫描任务
+  # 每个任务负责多个项目
+  # ====================================
+
+  scan:
+    needs: prepare
+
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 350
+
+    strategy:
+
+      # 单个任务失败不终止其他任务
+      fail-fast: false
+
+      # 最多10个任务同时运行
+      max-parallel: 10
+
+      # 从 prepare 动态获取任务分组
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+
+    steps:
+
+      # 下载检测器
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # 安装 Go
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache: false
+
+      # 每个 Runner 只编译一次
+      - name: Build scanner
+        run: go build -o mtrace mtrace.go
+
+      # 串行扫描当前 Runner 分配的项目
+      - name: Scan assigned repositories
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ matrix.shards }}
+        run: python3 scripts/batch.py scan
+
+      # 上传当前 Runner 的结果
+      - name: Upload shard results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mtrace-shard-${{ matrix.shard }}
+          path: results/
+          if-no-files-found: warn
+          retention-days: 30
+
+
+  # ====================================
+  # Job 3: 合并全部扫描结果
+  # ====================================
+
+  aggregate:
+    needs: [prepare, scan]
+
+    if: ${{ always() && needs.prepare.result == 'success' && !cancelled() }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # 下载所有扫描任务的报告
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: mtrace-shard-*
+          path: shards
+
+      # 自动生成 JSON、CSV、HTML 报告
+      - name: Aggregate results
+        run: python3 scripts/batch.py aggregate
+
+      # 上传最终汇总报告
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mtrace-batch-report
+          path: report/
+          retention-days: 30
