@@ -1,1 +1,6 @@
+[
+  {"repository": "projectcapsule/capsule", "ref": "v0.7.0"},
+  {"repository": "rancher/rancher", "ref": "main"},
+  {"repository": "Project-HAMi/HAMi", "ref": "master"}
+]
 
