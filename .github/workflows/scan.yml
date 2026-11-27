@@ -70,7 +70,7 @@ jobs:
 
       # 7. 上传 JSON 报告
       - name: Upload Results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mtrace-results
           path: results/
