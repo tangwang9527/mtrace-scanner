@@ -1,2 +1,14 @@
 # mtrace-scanner
-用于检测元数据导致的高权限漏洞工具
+A tool for detecting high-privilege vulnerabilities caused by metadata.
+
+# Directory Structure
+mtrace-scanner/
+├── .github/
+│   └── workflows/
+│       ├── scan.yml          # Single-project scanning
+│       └── batch-scan.yml    # Batch scanning
+├── config/
+│   └── repositories.json    # List of projects to scan
+├── scripts/
+│   └── batch.py ​​            # Grouping, scanning, aggregation, and reporting
+└── mtrace.go                # Original detector
